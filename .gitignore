@@ -1,0 +1,54 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Mac system files
+.DS_Store
+
+# VS Code settings
+.vscode/
+
+# PyCharm settings
+.idea/
+
+# Data files you may not want to upload
+*.csv
+*.xlsx
+*.xls
+*.parquet
+
+# Large raw data folders
+raw/
+data/
+
+# Model/output files
+*.pkl
+*.pickle
+*.joblib
+*.h5
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Generated plots and exports
+*.png
+*.jpg
+*.jpeg
+*.pdf
