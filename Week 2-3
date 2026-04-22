@@ -1,0 +1,345 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load data (files are in the same folder)
+df_listing = pd.read_csv('CRMLSListing202602.csv')
+df_sold = pd.read_csv('CRMLSSold202602.csv')
+
+print("="*60)
+print("DATASET UNDERSTANDING")
+print("="*60)
+
+print(f"\nLISTING Data: {df_listing.shape[0]} rows, {df_listing.shape[1]} columns")
+print(f"SOLD Data: {df_sold.shape[0]} rows, {df_sold.shape[1]} columns")
+
+print("\nLISTING Data Types:")
+print(df_listing.dtypes.value_counts())
+
+print("\nSOLD Data Types:")
+print(df_sold.dtypes.value_counts())
+
+# Identify high-missing columns
+print("\n" + "="*60)
+print("MISSING VALUE ANALYSIS")
+print("="*60)
+
+missing_pct_listing = (df_listing.isnull().sum() / len(df_listing)) * 100
+high_missing_listing = missing_pct_listing[missing_pct_listing > 90]
+print(f"\nLISTING - Columns with >90% missing: {len(high_missing_listing)}")
+if len(high_missing_listing) > 0:
+    print(high_missing_listing)
+
+missing_pct_sold = (df_sold.isnull().sum() / len(df_sold)) * 100
+high_missing_sold = missing_pct_sold[missing_pct_sold > 90]
+print(f"\nSOLD - Columns with >90% missing: {len(high_missing_sold)}")
+if len(high_missing_sold) > 0:
+    print(high_missing_sold)
+
+# Separate market vs metadata
+market_fields = ['ClosePrice', 'ListPrice', 'OriginalListPrice', 'LivingArea', 
+                 'LotSizeAcres', 'BedroomsTotal', 'BathroomsTotalInteger', 
+                 'DaysOnMarket', 'YearBuilt']
+
+existing_market = [f for f in market_fields if f in df_listing.columns or f in df_sold.columns]
+print(f"\nMarket analysis fields found: {existing_market}")
+
+# Numeric distribution review
+print("\n" + "="*60)
+print("NUMERIC DISTRIBUTION REVIEW")
+print("="*60)
+
+def analyze_field(df, dataset_name, field):
+    if field in df.columns:
+        data = df[field].dropna()
+        if len(data) > 0:
+            print(f"\n{dataset_name} - {field}:")
+            print(f"  Count: {len(data):,}")
+            print(f"  Mean: {data.mean():,.2f}")
+            print(f"  Median: {data.median():,.2f}")
+            print(f"  Min: {data.min():,.2f}")
+            print(f"  Max: {data.max():,.2f}")
+            
+            # Percentiles
+            pct = data.quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
+            print(f"  Percentiles: 1%={pct[0.01]:,.0f}, 5%={pct[0.05]:,.0f}, 25%={pct[0.25]:,.0f}, 50%={pct[0.5]:,.0f}, 75%={pct[0.75]:,.0f}, 95%={pct[0.95]:,.0f}, 99%={pct[0.99]:,.0f}")
+            
+            # Outliers (3*IQR)
+            Q1 = data.quantile(0.25)
+            Q3 = data.quantile(0.75)
+            IQR = Q3 - Q1
+            lower = Q1 - 3*IQR
+            upper = Q3 + 3*IQR
+            outliers = data[(data < lower) | (data > upper)]
+            print(f"  Extreme outliers: {len(outliers)} ({len(outliers)/len(data)*100:.1f}%)")
+            return data
+    return None
+
+print("\n--- LISTING DATA ---")
+for field in market_fields:
+    analyze_field(df_listing, "LISTING", field)
+
+print("\n--- SOLD DATA ---")
+for field in market_fields:
+    analyze_field(df_sold, "SOLD", field)
+
+# Generate histograms and boxplots
+print("\n" + "="*60)
+print("GENERATING VISUALIZATIONS")
+print("="*60)
+
+# Create a figure with subplots
+fig, axes = plt.subplots(len(market_fields), 2, figsize=(12, 4*len(market_fields)))
+
+for i, field in enumerate(market_fields):
+    # Get data from either dataframe
+    data = None
+    if field in df_sold.columns:
+        data = df_sold[field].dropna()
+    elif field in df_listing.columns:
+        data = df_listing[field].dropna()
+    
+    if data is not None and len(data) > 0:
+        # Cap at 99th percentile for better view
+        cap = data.quantile(0.99)
+        plot_data = data[data <= cap]
+        
+        # Histogram
+        axes[i, 0].hist(plot_data, bins=50, edgecolor='black', alpha=0.7, color='steelblue')
+        axes[i, 0].set_title(f'{field} - Histogram')
+        axes[i, 0].set_xlabel(field)
+        axes[i, 0].set_ylabel('Frequency')
+        
+        # Boxplot
+        axes[i, 1].boxplot(plot_data, vert=True)
+        axes[i, 1].set_title(f'{field} - Boxplot')
+        axes[i, 1].set_ylabel(field)
+    else:
+        axes[i, 0].text(0.5, 0.5, f'{field} not found', ha='center', va='center')
+        axes[i, 0].set_title(f'{field} - Not Available')
+        axes[i, 1].text(0.5, 0.5, f'{field} not found', ha='center', va='center')
+        axes[i, 1].set_title(f'{field} - Not Available')
+
+plt.tight_layout()
+plt.savefig('distribution_analysis.png', dpi=100, bbox_inches='tight')
+print("✓ Visualization saved as 'distribution_analysis.png'")
+
+print("\n" + "="*60)
+print("EDA COMPLETE")
+print("="*60)
+
+#New Code
+import pandas as pd
+
+# Load data
+df_sold = pd.read_csv('CRMLSSold202602.csv')
+
+# QUESTION 1: Median and average close prices
+print("QUESTION 1: Close Price Statistics")
+print("-" * 40)
+print(f"Average Close Price: ${df_sold['ClosePrice'].mean():,.2f}")
+print(f"Median Close Price: ${df_sold['ClosePrice'].median():,.2f}")
+print()
+
+# QUESTION 2: Days on Market distribution
+print("QUESTION 2: Days on Market")
+print("-" * 40)
+dom = df_sold['DaysOnMarket'].dropna()
+print(f"Average DOM: {dom.mean():.1f} days")
+print(f"Median DOM: {dom.median():.1f} days")
+print()
+
+# QUESTION 3: Percentage above vs below list price
+print("QUESTION 3: Sold vs List Price")
+print("-" * 40)
+above = (df_sold['ClosePrice'] > df_sold['ListPrice']).sum()
+below = (df_sold['ClosePrice'] < df_sold['ListPrice']).sum()
+total = len(df_sold.dropna(subset=['ClosePrice', 'ListPrice']))
+print(f"Above list price: {above/total*100:.1f}%")
+print(f"Below list price: {below/total*100:.1f}%")
+print()
+
+# QUESTION 4: Date consistency issues (FIXED - use actual column names)
+print("QUESTION 4: Date Consistency")
+print("-" * 40)
+
+# REPLACE 'ListingDate' with the actual column name from your data
+# For example, it might be: 'OriginalListDate', 'ListDate', 'ListingContractDate', etc.
+date_column = 'OriginalListDate'  # CHANGE THIS to whatever you find
+
+if date_column in df_sold.columns:
+    invalid = (df_sold['CloseDate'] < df_sold[date_column]).sum()
+    print(f"Properties with close date before listing date: {invalid}")
+else:
+    print(f"Column '{date_column}' not found. Available date columns:")
+    date_cols = [col for col in df_sold.columns if 'date' in col.lower() or 'Date' in col]
+    print(date_cols)
+
+# QUESTION 5: Counties with highest median prices
+print("\nQUESTION 5: Top Counties by Median Price")
+print("-" * 40)
+
+# REPLACE 'County' with the actual column name from your data
+county_column = 'County'  # CHANGE THIS
+
+if county_column in df_sold.columns:
+    county_medians = df_sold.groupby(county_column)['ClosePrice'].median().sort_values(ascending=False)
+    print(county_medians.head(10))
+else:
+    print(f"Column '{county_column}' not found. Available columns with 'county':")
+    county_cols = [col for col in df_sold.columns if 'county' in col.lower()]
+    print(county_cols)
+
+# ============================================================================
+# WEEKS 2-3 DELIVERABLES
+# ============================================================================
+
+# Inspect structure
+print("\n" + "="*60)
+print("INSPECT STRUCTURE")
+print("="*60)
+print(df_sold.columns)
+print(df_sold.head())
+
+# Check property categories
+print("\n" + "="*60)
+print("PROPERTY CATEGORIES")
+print("="*60)
+print(df_sold['PropertyType'].unique())
+
+# Filter residential
+print("\n" + "="*60)
+print("FILTER RESIDENTIAL")
+print("="*60)
+original_count = len(df_sold)
+df_sold = df_sold[df_sold.PropertyType == 'Residential']
+print(f"Original: {original_count}, After filter: {len(df_sold)}")
+
+# Validate completeness
+print("\n" + "="*60)
+print("NULL COUNT SUMMARY")
+print("="*60)
+print(df_sold.isnull().sum())
+
+# Missing value report flagging columns above 90% null
+print("\n" + "="*60)
+print("MISSING VALUE REPORT (>90% NULL)")
+print("="*60)
+missing_pct = (df_sold.isnull().sum() / len(df_sold)) * 100
+high_missing = missing_pct[missing_pct > 90]
+if len(high_missing) > 0:
+    print(high_missing)
+else:
+    print("No columns with >90% missing values")
+
+# Numeric distribution summary for ClosePrice, LivingArea, DaysOnMarket
+print("\n" + "="*60)
+print("NUMERIC DISTRIBUTION SUMMARY")
+print("="*60)
+
+for field in ['ClosePrice', 'LivingArea', 'DaysOnMarket']:
+    if field in df_sold.columns:
+        data = df_sold[field].dropna()
+        if len(data) > 0:
+            print(f"\n{field}:")
+            print(f"  Min: {data.min():,.2f}")
+            print(f"  Max: {data.max():,.2f}")
+            print(f"  Mean: {data.mean():,.2f}")
+            print(f"  Median: {data.median():,.2f}")
+            print(f"  25th percentile: {data.quantile(0.25):,.2f}")
+            print(f"  75th percentile: {data.quantile(0.75):,.2f}")
+
+# Save filtered dataset
+print("\n" + "="*60)
+print("SAVE FILTERED DATASET")
+print("="*60)
+df_sold.to_csv('CRMLSSold202602_Filtered.csv', index=False)
+print("Saved: CRMLSSold202602_Filtered.csv")
+
+# ============================================================================
+# MORTGAGE RATE ENRICHMENT
+# ============================================================================
+
+print("\n" + "="*60)
+print("MORTGAGE RATE ENRICHMENT (FRED)")
+print("="*60)
+
+# Step 1 – Fetch the mortgage rate data from FRED
+print("\nStep 1: Fetching mortgage rate data from FRED...")
+url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MORTGAGE30US"
+mortgage = pd.read_csv(url)
+
+# Check the actual column names
+print(f"Columns in FRED data: {mortgage.columns.tolist()}")
+
+# Find the date column (it might be 'DATE', 'observation_date', or something else)
+date_col = None
+for col in mortgage.columns:
+    if 'date' in col.lower():
+        date_col = col
+        break
+
+if date_col:
+    mortgage = mortgage.rename(columns={date_col: 'date'})
+    mortgage['date'] = pd.to_datetime(mortgage['date'])
+else:
+    print("Using first column as date")
+    mortgage.columns = ['date', 'rate_30yr_fixed']
+    mortgage['date'] = pd.to_datetime(mortgage['date'])
+
+# Find the rate column
+rate_col = None
+for col in mortgage.columns:
+    if 'rate' in col.lower() or 'MORTGAGE' in col:
+        rate_col = col
+        break
+
+if rate_col:
+    mortgage = mortgage.rename(columns={rate_col: 'rate_30yr_fixed'})
+else:
+    mortgage.columns = ['date', 'rate_30yr_fixed']
+
+print(f"Downloaded {len(mortgage)} weekly records")
+print(f"Date range: {mortgage['date'].min()} to {mortgage['date'].max()}")
+
+# Step 2 – Resample weekly rates to monthly averages
+print("\nStep 2: Resampling to monthly averages...")
+mortgage['year_month'] = mortgage['date'].dt.to_period('M')
+mortgage_monthly = mortgage.groupby('year_month')['rate_30yr_fixed'].mean().reset_index()
+print(f"Resampled to {len(mortgage_monthly)} monthly records")
+print(mortgage_monthly.tail())
+
+# Step 3 – Create a matching year_month key on the MLS datasets
+print("\nStep 3: Creating year_month keys...")
+# Sold dataset — key off CloseDate
+df_sold['year_month'] = pd.to_datetime(df_sold['CloseDate']).dt.to_period('M')
+# Listings dataset — key off ListingContractDate
+df_listing['year_month'] = pd.to_datetime(df_listing['ListingContractDate']).dt.to_period('M')
+print("Year_month keys created for both datasets")
+
+# Step 4 – Merge
+print("\nStep 4: Merging mortgage rates...")
+sold_with_rates = df_sold.merge(mortgage_monthly, on='year_month', how='left')
+listings_with_rates = df_listing.merge(mortgage_monthly, on='year_month', how='left')
+print("Merge complete")
+
+# Step 5 – Validate the merge
+print("\nStep 5: Validating merge...")
+print(f"Null rates in sold data: {sold_with_rates['rate_30yr_fixed'].isnull().sum()}")
+print(f"Null rates in listings data: {listings_with_rates['rate_30yr_fixed'].isnull().sum()}")
+
+# Preview
+print("\nPreview - Sold data with mortgage rates:")
+print(sold_with_rates[['CloseDate', 'year_month', 'ClosePrice', 'rate_30yr_fixed']].head())
+
+# Save enriched datasets
+print("\n" + "="*60)
+print("SAVE ENRICHED DATASETS")
+print("="*60)
+sold_with_rates.to_csv('CRMLSSold202602_Enriched.csv', index=False)
+listings_with_rates.to_csv('CRMLSListing202602_Enriched.csv', index=False)
+print("Saved: CRMLSSold202602_Enriched.csv")
+print("Saved: CRMLSListing202602_Enriched.csv")
+
+print("\n" + "="*60)
+print("ALL TASKS COMPLETE")
+print("="*60)
