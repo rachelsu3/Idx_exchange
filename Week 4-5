@@ -1,0 +1,428 @@
+# ============================================================================
+# WEEKS 4-5: DATA CLEANING AND PREPARATION
+# Author: [Your Name]
+# Description: Cleans MLS data, handles missing values, validates dates and coordinates
+# ============================================================================
+
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings('ignore')
+
+print("="*80)
+print("WEEKS 4-5: DATA CLEANING AND PREPARATION")
+print("="*80)
+
+# ============================================================================
+# LOAD PREVIOUSLY CREATED CSV FILES
+# ============================================================================
+
+print("\n" + "="*60)
+print("LOADING PREVIOUSLY CREATED DATASETS")
+print("="*60)
+
+# Try to load the enriched datasets from Weeks 2-3 first
+try:
+    df_sold = pd.read_csv('CRMLSSold202602_Enriched.csv')
+    df_listing = pd.read_csv('CRMLSListing202602_Enriched.csv')
+    print("✓ Loaded enriched datasets from Weeks 2-3")
+except FileNotFoundError:
+    print("⚠️ Enriched datasets not found. Loading original CSV files...")
+    try:
+        df_sold = pd.read_csv('CRMLSSold202602.csv')
+        df_listing = pd.read_csv('CRMLSListing202602.csv')
+        print("✓ Loaded original CSV files")
+    except FileNotFoundError:
+        print("❌ ERROR: Could not find CSV files. Please check file paths.")
+        exit()
+
+print(f"\nOriginal Sold data: {df_sold.shape[0]:,} rows, {df_sold.shape[1]} columns")
+print(f"Original Listing data: {df_listing.shape[0]:,} rows, {df_listing.shape[1]} columns")
+
+# Display first few rows to verify
+print("\nPreview of Sold data (first 2 rows):")
+print(df_sold.head(2))
+
+print("\nPreview of Listing data (first 2 rows):")
+print(df_listing.head(2))
+
+# ============================================================================
+# TASK 1: CONVERT DATE FIELDS TO DATETIME FORMAT
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 1: Converting Date Fields to DateTime")
+print("="*60)
+
+# Define date fields to convert
+sold_date_fields = ['CloseDate', 'PurchaseContractDate', 'ListingContractDate', 'ContractStatusChangeDate']
+listing_date_fields = ['ListingContractDate', 'ContractStatusChangeDate']
+
+# Convert sold date fields
+for field in sold_date_fields:
+    if field in df_sold.columns:
+        df_sold[field] = pd.to_datetime(df_sold[field], errors='coerce')
+        print(f"✓ Converted {field} in sold data")
+    else:
+        print(f"⚠️ {field} not found in sold data")
+
+# Convert listing date fields
+for field in listing_date_fields:
+    if field in df_listing.columns:
+        df_listing[field] = pd.to_datetime(df_listing[field], errors='coerce')
+        print(f"✓ Converted {field} in listing data")
+    else:
+        print(f"⚠️ {field} not found in listing data")
+
+# ============================================================================
+# TASK 2: REMOVE UNNECESSARY OR REDUNDANT COLUMNS
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 2: Removing Unnecessary Columns")
+print("="*60)
+
+# Identify columns that are all null or have very high missing rates (>95%)
+def remove_high_missing_columns(df, name, threshold=95):
+    missing_pct = (df.isnull().sum() / len(df)) * 100
+    cols_to_drop = missing_pct[missing_pct > threshold].index.tolist()
+    
+    if cols_to_drop:
+        print(f"\n{name} - Dropping {len(cols_to_drop)} columns with >{threshold}% missing:")
+        for col in cols_to_drop[:10]:
+            print(f"   - {col}: {missing_pct[col]:.1f}% missing")
+        if len(cols_to_drop) > 10:
+            print(f"   ... and {len(cols_to_drop) - 10} more")
+        return df.drop(columns=cols_to_drop)
+    else:
+        print(f"\n{name} - No columns with >{threshold}% missing")
+        return df
+
+# Remove redundant columns (duplicate or identifier columns that don't add value)
+redundant_patterns = ['MLS_Number', 'ListingId', 'Id', 'Unnamed', 'OriginatingSystemKey', 'OriginatingSystemID']
+
+def remove_redundant_columns(df, name):
+    cols_to_drop = []
+    for col in df.columns:
+        for pattern in redundant_patterns:
+            if pattern.lower() in col.lower():
+                cols_to_drop.append(col)
+                break
+    
+    df_cleaned = df.drop(columns=cols_to_drop, errors='ignore')
+    
+    if cols_to_drop:
+        print(f"\n{name} - Dropped {len(cols_to_drop)} redundant columns: {cols_to_drop[:5]}")
+        if len(cols_to_drop) > 5:
+            print(f"   ... and {len(cols_to_drop) - 5} more")
+    
+    return df_cleaned
+
+# Apply cleaning
+df_sold = remove_high_missing_columns(df_sold, "Sold Data")
+df_listing = remove_high_missing_columns(df_listing, "Listing Data")
+
+df_sold = remove_redundant_columns(df_sold, "Sold Data")
+df_listing = remove_redundant_columns(df_listing, "Listing Data")
+
+print(f"\nAfter removal - Sold data: {df_sold.shape[0]:,} rows, {df_sold.shape[1]} columns")
+print(f"After removal - Listing data: {df_listing.shape[0]:,} rows, {df_listing.shape[1]} columns")
+
+# ============================================================================
+# TASK 3: HANDLE MISSING VALUES APPROPRIATELY
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 3: Handling Missing Values")
+print("="*60)
+
+# Function to handle missing values based on column type
+def handle_missing_values(df, name):
+    print(f"\n{name} - Missing value handling:")
+    
+    # Numeric fields: fill with median
+    numeric_fields = ['ClosePrice', 'ListPrice', 'LivingArea', 'LotSizeAcres', 
+                      'BedroomsTotal', 'BathroomsTotalInteger', 'DaysOnMarket', 
+                      'YearBuilt', 'rate_30yr_fixed']
+    
+    for field in numeric_fields:
+        if field in df.columns:
+            missing_count = df[field].isnull().sum()
+            if missing_count > 0:
+                median_val = df[field].median()
+                df[field].fillna(median_val, inplace=True)
+                print(f"   - {field}: filled {missing_count:,} missing values with median ({median_val:.2f})")
+    
+    # Categorical fields: fill with mode or 'Unknown'
+    categorical_fields = ['PropertyType', 'County', 'City', 'PropertySubType']
+    for field in categorical_fields:
+        if field in df.columns:
+            missing_count = df[field].isnull().sum()
+            if missing_count > 0:
+                mode_val = df[field].mode()[0] if len(df[field].mode()) > 0 else 'Unknown'
+                df[field].fillna(mode_val, inplace=True)
+                print(f"   - {field}: filled {missing_count:,} missing values with '{mode_val}'")
+    
+    return df
+
+df_sold = handle_missing_values(df_sold, "Sold Data")
+df_listing = handle_missing_values(df_listing, "Listing Data")
+
+# ============================================================================
+# TASK 4: ENSURE NUMERIC FIELDS ARE PROPERLY TYPED
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 4: Ensuring Numeric Fields are Properly Typed")
+print("="*60)
+
+# Convert to numeric, coercing errors to NaN
+numeric_fields = ['ClosePrice', 'ListPrice', 'LivingArea', 'LotSizeAcres', 
+                  'BedroomsTotal', 'BathroomsTotalInteger', 'DaysOnMarket', 
+                  'YearBuilt', 'Latitude', 'Longitude']
+
+for field in numeric_fields:
+    if field in df_sold.columns:
+        df_sold[field] = pd.to_numeric(df_sold[field], errors='coerce')
+    if field in df_listing.columns:
+        df_listing[field] = pd.to_numeric(df_listing[field], errors='coerce')
+
+print("✓ Numeric fields converted")
+
+# ============================================================================
+# TASK 5: REMOVE OR FLAG INVALID NUMERIC VALUES
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 5: Flagging Invalid Numeric Values")
+print("="*60)
+
+def flag_invalid_values(df, name):
+    print(f"\n{name} - Invalid value flags:")
+    
+    # Create flag columns for invalid values
+    df['invalid_close_price_flag'] = 0
+    df['invalid_living_area_flag'] = 0
+    df['invalid_dom_flag'] = 0
+    df['invalid_bedrooms_flag'] = 0
+    df['invalid_bathrooms_flag'] = 0
+    
+    # Flag ClosePrice <= 0
+    if 'ClosePrice' in df.columns:
+        invalid = (df['ClosePrice'] <= 0) | (df['ClosePrice'].isnull())
+        df.loc[invalid, 'invalid_close_price_flag'] = 1
+        print(f"   - ClosePrice <= 0: {invalid.sum():,} records flagged")
+    
+    # Flag LivingArea <= 0
+    if 'LivingArea' in df.columns:
+        invalid = (df['LivingArea'] <= 0) | (df['LivingArea'].isnull())
+        df.loc[invalid, 'invalid_living_area_flag'] = 1
+        print(f"   - LivingArea <= 0: {invalid.sum():,} records flagged")
+    
+    # Flag DaysOnMarket < 0
+    if 'DaysOnMarket' in df.columns:
+        invalid = (df['DaysOnMarket'] < 0) | (df['DaysOnMarket'].isnull())
+        df.loc[invalid, 'invalid_dom_flag'] = 1
+        print(f"   - DaysOnMarket < 0: {invalid.sum():,} records flagged")
+    
+    # Flag Bedrooms < 0 or > 10 (unrealistic)
+    if 'BedroomsTotal' in df.columns:
+        invalid = (df['BedroomsTotal'] < 0) | (df['BedroomsTotal'] > 10) | (df['BedroomsTotal'].isnull())
+        df.loc[invalid, 'invalid_bedrooms_flag'] = 1
+        print(f"   - Bedrooms out of range (0-10): {invalid.sum():,} records flagged")
+    
+    # Flag Bathrooms < 0 or > 10
+    if 'BathroomsTotalInteger' in df.columns:
+        invalid = (df['BathroomsTotalInteger'] < 0) | (df['BathroomsTotalInteger'] > 10) | (df['BathroomsTotalInteger'].isnull())
+        df.loc[invalid, 'invalid_bathrooms_flag'] = 1
+        print(f"   - Bathrooms out of range (0-10): {invalid.sum():,} records flagged")
+    
+    return df
+
+df_sold = flag_invalid_values(df_sold, "Sold Data")
+df_listing = flag_invalid_values(df_listing, "Listing Data")
+
+# ============================================================================
+# TASK 6: DATE CONSISTENCY CHECKS
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 6: Date Consistency Checks")
+print("="*60)
+
+# Create flag columns for date consistency
+df_sold['listing_after_close_flag'] = 0
+df_sold['purchase_after_close_flag'] = 0
+df_sold['negative_timeline_flag'] = 0
+
+# Check: ListingContractDate should be before CloseDate
+if 'ListingContractDate' in df_sold.columns and 'CloseDate' in df_sold.columns:
+    invalid = (df_sold['ListingContractDate'] > df_sold['CloseDate']) & (df_sold['ListingContractDate'].notna()) & (df_sold['CloseDate'].notna())
+    df_sold.loc[invalid, 'listing_after_close_flag'] = 1
+    print(f"✓ listing_after_close_flag: {invalid.sum():,} records where ListingDate > CloseDate")
+
+# Check: PurchaseContractDate should be before CloseDate
+if 'PurchaseContractDate' in df_sold.columns and 'CloseDate' in df_sold.columns:
+    invalid = (df_sold['PurchaseContractDate'] > df_sold['CloseDate']) & (df_sold['PurchaseContractDate'].notna()) & (df_sold['CloseDate'].notna())
+    df_sold.loc[invalid, 'purchase_after_close_flag'] = 1
+    print(f"✓ purchase_after_close_flag: {invalid.sum():,} records where PurchaseDate > CloseDate")
+
+# Combined negative timeline flag (any date inconsistency)
+df_sold['negative_timeline_flag'] = (df_sold['listing_after_close_flag'] == 1) | (df_sold['purchase_after_close_flag'] == 1)
+print(f"✓ negative_timeline_flag: {df_sold['negative_timeline_flag'].sum():,} records with any date inconsistency")
+
+# ============================================================================
+# TASK 7: GEOGRAPHIC DATA CHECKS
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 7: Geographic Data Quality Checks")
+print("="*60)
+
+def check_geographic_data(df, name):
+    print(f"\n{name} - Geographic quality checks:")
+    
+    # Flag columns
+    df['missing_coordinates_flag'] = 0
+    df['zero_coordinates_flag'] = 0
+    df['longitude_error_flag'] = 0
+    df['out_of_state_flag'] = 0
+    
+    # Check missing coordinates
+    if 'Latitude' in df.columns and 'Longitude' in df.columns:
+        missing = df['Latitude'].isnull() | df['Longitude'].isnull()
+        df.loc[missing, 'missing_coordinates_flag'] = 1
+        print(f"   - Missing coordinates: {missing.sum():,} records flagged")
+    
+    # Check Latitude = 0 or Longitude = 0 (sentinel null values)
+    if 'Latitude' in df.columns and 'Longitude' in df.columns:
+        zero_coords = ((df['Latitude'] == 0) | (df['Longitude'] == 0)) & (~missing)
+        df.loc[zero_coords, 'zero_coordinates_flag'] = 1
+        print(f"   - Zero coordinates (sentinel values): {zero_coords.sum():,} records flagged")
+    
+    # Check Longitude > 0 error (California coordinates should be negative)
+    if 'Longitude' in df.columns:
+        long_error = (df['Longitude'] > 0) & (df['Longitude'].notna()) & (df['Longitude'] != 0)
+        df.loc[long_error, 'longitude_error_flag'] = 1
+        print(f"   - Longitude > 0 (should be negative for CA): {long_error.sum():,} records flagged")
+    
+    # Check out-of-state or implausible coordinates (rough California bounds)
+    if 'Latitude' in df.columns and 'Longitude' in df.columns:
+        # California approximate bounds: Lat 32.5-42.0, Long -124.5 to -114.0
+        out_of_state = ((df['Latitude'] < 32) | (df['Latitude'] > 42) | 
+                        (df['Longitude'] < -125) | (df['Longitude'] > -113)) & \
+                       (df['Latitude'].notna()) & (df['Longitude'].notna()) & \
+                       (~zero_coords) & (~missing)
+        df.loc[out_of_state, 'out_of_state_flag'] = 1
+        print(f"   - Out-of-state coordinates: {out_of_state.sum():,} records flagged")
+    
+    return df
+
+df_sold = check_geographic_data(df_sold, "Sold Data")
+df_listing = check_geographic_data(df_listing, "Listing Data")
+
+# ============================================================================
+# FINAL CLEANING: REMOVE OR KEEP FLAGGED RECORDS
+# ============================================================================
+
+print("\n" + "="*60)
+print("FINAL CLEANING: Decision on Flagged Records")
+print("="*60)
+
+print("\nKeeping all records but flags are available for filtering decisions")
+print("Critical flags created:")
+print("   - invalid_close_price_flag")
+print("   - invalid_living_area_flag")
+print("   - negative_timeline_flag")
+print("   - missing_coordinates_flag")
+
+# Create a clean version without critical invalid values (optional)
+df_sold_clean = df_sold[
+    (df_sold['invalid_close_price_flag'] == 0) &
+    (df_sold['invalid_living_area_flag'] == 0) &
+    (df_sold['invalid_dom_flag'] == 0)
+].copy()
+
+print(f"\nClean version (removing critical invalid values):")
+print(f"   Original: {len(df_sold):,} records")
+print(f"   Clean: {len(df_sold_clean):,} records")
+print(f"   Removed: {len(df_sold) - len(df_sold_clean):,} records")
+
+# ============================================================================
+# DATA TYPE CONFIRMATIONS
+# ============================================================================
+
+print("\n" + "="*60)
+print("DATA TYPE CONFIRMATIONS")
+print("="*60)
+
+print("\nSold Data - Final Data Types:")
+print(df_sold.dtypes.value_counts())
+
+print("\nKey fields confirmation:")
+key_fields = ['CloseDate', 'ClosePrice', 'LivingArea', 'DaysOnMarket', 'Latitude', 'Longitude']
+for field in key_fields:
+    if field in df_sold.columns:
+        print(f"   {field}: {df_sold[field].dtype}")
+
+# ============================================================================
+# SUMMARY REPORT
+# ============================================================================
+
+print("\n" + "="*60)
+print("WEEKS 4-5 DELIVERABLE SUMMARY")
+print("="*60)
+
+print(f"""
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        DATA CLEANING SUMMARY                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  BEFORE CLEANING:                                                           │
+│    • Sold data: {df_sold.shape[0]:,} rows, {df_sold.shape[1]} columns                                 │
+│                                                                             │
+│  TRANSFORMATIONS APPLIED:                                                   │
+│    ✓ Converted date fields to datetime                                      │
+│    ✓ Removed columns with >95% missing values                               │
+│    ✓ Removed redundant columns                                              │
+│    ✓ Filled missing numeric values with median                              │
+│    ✓ Filled missing categorical values with mode                            │
+│    ✓ Converted numeric fields to proper types                               │
+│    ✓ Created invalid value flags                                            │
+│    ✓ Created date consistency flags                                         │
+│    ✓ Created geographic quality flags                                       │
+│                                                                             │
+│  DATE CONSISTENCY FLAGS:                                                    │
+│    • listing_after_close_flag: {df_sold['listing_after_close_flag'].sum():,} records                       │
+│    • purchase_after_close_flag: {df_sold['purchase_after_close_flag'].sum():,} records                     │
+│    • negative_timeline_flag: {df_sold['negative_timeline_flag'].sum():,} records                           │
+│                                                                             │
+│  GEOGRAPHIC DATA QUALITY:                                                   │
+│    • missing_coordinates_flag: {df_sold['missing_coordinates_flag'].sum():,} records                       │
+│    • zero_coordinates_flag: {df_sold['zero_coordinates_flag'].sum():,} records                             │
+│    • longitude_error_flag: {df_sold['longitude_error_flag'].sum():,} records                               │
+│    • out_of_state_flag: {df_sold['out_of_state_flag'].sum():,} records                                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+""")
+
+# ============================================================================
+# SAVE CLEANED DATASETS
+# ============================================================================
+
+print("\n" + "="*60)
+print("SAVING CLEANED DATASETS")
+print("="*60)
+
+# Save the cleaned datasets
+df_sold.to_csv('CRMLSSold202602_Cleaned.csv', index=False)
+df_listing.to_csv('CRMLSListing202602_Cleaned.csv', index=False)
+df_sold_clean.to_csv('CRMLSSold202602_Cleaned_Strict.csv', index=False)
+
+print("✓ Saved: CRMLSSold202602_Cleaned.csv (all records with flags)")
+print("✓ Saved: CRMLSListing202602_Cleaned.csv (all records with flags)")
+print("✓ Saved: CRMLSSold202602_Cleaned_Strict.csv (invalid values removed)")
+
+print("\n" + "="*60)
+print("WEEKS 4-5 COMPLETE")
+print("="*60)
