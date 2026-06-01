@@ -1,0 +1,713 @@
+# ============================================================================
+# WEEK 7: OUTLIER DETECTION AND DATA QUALITY
+# Description: Applies IQR method to detect outliers in key numeric fields
+# ============================================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
+
+print("="*80)
+print("WEEK 7: OUTLIER DETECTION AND DATA QUALITY")
+print("="*80)
+
+# ============================================================================
+# LOAD DATA WITH ENGINEERED METRICS FROM WEEK 6
+# ============================================================================
+
+print("\n" + "="*60)
+print("LOADING DATASET")
+print("="*60)
+
+# Try to load the dataset with metrics from Week 6
+try:
+    df = pd.read_csv('CRMLSSold202602_With_Metrics.csv')
+    print("✓ Loaded dataset with engineered metrics from Week 6")
+except FileNotFoundError:
+    try:
+        df = pd.read_csv('CRMLSSold202602_Cleaned.csv')
+        print("⚠️ Week 6 metrics not found. Loaded cleaned dataset from Week 5.")
+    except FileNotFoundError:
+        print("❌ ERROR: Could not find CSV file. Please run previous weeks first.")
+        exit()
+
+print(f"Original dataset shape: {df.shape[0]:,} rows, {df.shape[1]} columns")
+
+# Ensure numeric fields are properly typed
+numeric_fields = ['ClosePrice', 'LivingArea', 'DaysOnMarket', 'price_per_sqft', 'price_ratio']
+for field in numeric_fields:
+    if field in df.columns:
+        df[field] = pd.to_numeric(df[field], errors='coerce')
+
+# ============================================================================
+# TASK 1: CREATE OUTLIER FLAG COLUMNS (PRESERVE ORIGINAL DATA)
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 1: Creating Outlier Flag Columns")
+print("="*60)
+
+# Initialize flag columns
+df['outlier_ClosePrice_flag'] = 0
+df['outlier_LivingArea_flag'] = 0
+df['outlier_DaysOnMarket_flag'] = 0
+df['outlier_any_flag'] = 0
+df['outlier_severe_flag'] = 0
+
+# Define function to detect outliers using IQR method
+def detect_outliers_iqr(data, multiplier=1.5):
+    """Detect outliers using IQR method with specified multiplier"""
+    if data.dropna().empty:
+        return pd.Series([False] * len(data), index=data.index)
+    
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - multiplier * IQR
+    upper_bound = Q3 + multiplier * IQR
+    
+    return (data < lower_bound) | (data > upper_bound)
+
+# Define function for severe outliers (3*IQR)
+def detect_severe_outliers_iqr(data, multiplier=3.0):
+    """Detect severe/extreme outliers using 3*IQR method"""
+    if data.dropna().empty:
+        return pd.Series([False] * len(data), index=data.index)
+    
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - multiplier * IQR
+    upper_bound = Q3 + multiplier * IQR
+    
+    return (data < lower_bound) | (data > upper_bound)
+
+# Apply outlier detection to ClosePrice
+if 'ClosePrice' in df.columns:
+    outlier_mask = detect_outliers_iqr(df['ClosePrice'], multiplier=1.5)
+    severe_mask = detect_severe_outliers_iqr(df['ClosePrice'], multiplier=3.0)
+    df.loc[outlier_mask, 'outlier_ClosePrice_flag'] = 1
+    print(f"✓ ClosePrice: {outlier_mask.sum():,} outliers detected ({outlier_mask.sum()/len(df)*100:.1f}%)")
+    print(f"  - Severe outliers (3*IQR): {severe_mask.sum():,} ({severe_mask.sum()/len(df)*100:.1f}%)")
+    
+    # Store bounds for reporting
+    Q1 = df['ClosePrice'].quantile(0.25)
+    Q3 = df['ClosePrice'].quantile(0.75)
+    IQR = Q3 - Q1
+    print(f"  - IQR bounds: ${Q1:,.0f} - ${Q3:,.0f}")
+    print(f"  - Outlier bounds: < ${Q1 - 1.5*IQR:,.0f} or > ${Q3 + 1.5*IQR:,.0f}")
+
+# Apply outlier detection to LivingArea
+if 'LivingArea' in df.columns:
+    outlier_mask = detect_outliers_iqr(df['LivingArea'], multiplier=1.5)
+    severe_mask = detect_severe_outliers_iqr(df['LivingArea'], multiplier=3.0)
+    df.loc[outlier_mask, 'outlier_LivingArea_flag'] = 1
+    print(f"\n✓ LivingArea: {outlier_mask.sum():,} outliers detected ({outlier_mask.sum()/len(df)*100:.1f}%)")
+    print(f"  - Severe outliers (3*IQR): {severe_mask.sum():,} ({severe_mask.sum()/len(df)*100:.1f}%)")
+    
+    Q1 = df['LivingArea'].quantile(0.25)
+    Q3 = df['LivingArea'].quantile(0.75)
+    IQR = Q3 - Q1
+    print(f"  - IQR bounds: {Q1:,.0f} - {Q3:,.0f} sq ft")
+    print(f"  - Outlier bounds: < {Q1 - 1.5*IQR:,.0f} or > {Q3 + 1.5*IQR:,.0f} sq ft")
+
+# Apply outlier detection to DaysOnMarket
+if 'DaysOnMarket' in df.columns:
+    outlier_mask = detect_outliers_iqr(df['DaysOnMarket'], multiplier=1.5)
+    severe_mask = detect_severe_outliers_iqr(df['DaysOnMarket'], multiplier=3.0)
+    df.loc[outlier_mask, 'outlier_DaysOnMarket_flag'] = 1
+    print(f"\n✓ DaysOnMarket: {outlier_mask.sum():,} outliers detected ({outlier_mask.sum()/len(df)*100:.1f}%)")
+    print(f"  - Severe outliers (3*IQR): {severe_mask.sum():,} ({severe_mask.sum()/len(df)*100:.1f}%)")
+    
+    Q1 = df['DaysOnMarket'].quantile(0.25)
+    Q3 = df['DaysOnMarket'].quantile(0.75)
+    IQR = Q3 - Q1
+    print(f"  - IQR bounds: {Q1:.0f} - {Q3:.0f} days")
+    print(f"  - Outlier bounds: < {Q1 - 1.5*IQR:.0f} or > {Q3 + 1.5*IQR:.0f} days")
+
+# Create combined outlier flags
+df['outlier_any_flag'] = (
+    (df['outlier_ClosePrice_flag'] == 1) | 
+    (df['outlier_LivingArea_flag'] == 1) | 
+    (df['outlier_DaysOnMarket_flag'] == 1)
+).astype(int)
+
+df['outlier_severe_flag'] = 0
+if 'ClosePrice' in df.columns:
+    severe_close = detect_severe_outliers_iqr(df['ClosePrice'], multiplier=3.0)
+    df.loc[severe_close, 'outlier_severe_flag'] = 1
+if 'LivingArea' in df.columns:
+    severe_area = detect_severe_outliers_iqr(df['LivingArea'], multiplier=3.0)
+    df.loc[severe_area, 'outlier_severe_flag'] = 1
+if 'DaysOnMarket' in df.columns:
+    severe_dom = detect_severe_outliers_iqr(df['DaysOnMarket'], multiplier=3.0)
+    df.loc[severe_dom, 'outlier_severe_flag'] = 1
+
+print(f"\n✓ Combined outlier flag: {df['outlier_any_flag'].sum():,} records have at least one outlier ({df['outlier_any_flag'].sum()/len(df)*100:.1f}%)")
+print(f"✓ Severe outlier flag: {df['outlier_severe_flag'].sum():,} records have severe outliers ({df['outlier_severe_flag'].sum()/len(df)*100:.1f}%)")
+
+# ============================================================================
+# TASK 2: BUSINESS RULE FLAGS (ALWAYS INVALID VALUES)
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 2: Business Rule Validation")
+print("="*60)
+
+# Create business rule flags
+df['invalid_price_flag'] = 0
+df['invalid_area_flag'] = 0
+df['invalid_dom_flag'] = 0
+
+if 'ClosePrice' in df.columns:
+    invalid_price = (df['ClosePrice'] <= 0) | (df['ClosePrice'].isnull())
+    df.loc[invalid_price, 'invalid_price_flag'] = 1
+    print(f"✓ ClosePrice <= 0 or null: {invalid_price.sum():,} records flagged")
+
+if 'LivingArea' in df.columns:
+    invalid_area = (df['LivingArea'] <= 0) | (df['LivingArea'].isnull())
+    df.loc[invalid_area, 'invalid_area_flag'] = 1
+    print(f"✓ LivingArea <= 0 or null: {invalid_area.sum():,} records flagged")
+
+if 'DaysOnMarket' in df.columns:
+    invalid_dom = (df['DaysOnMarket'] < 0) | (df['DaysOnMarket'].isnull())
+    df.loc[invalid_dom, 'invalid_dom_flag'] = 1
+    print(f"✓ DaysOnMarket < 0 or null: {invalid_dom.sum():,} records flagged")
+
+# ============================================================================
+# TASK 3: CREATE CLEAN FILTERED DATASET (WITHOUT OUTLIERS)
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 3: Creating Clean Filtered Dataset")
+print("="*60)
+
+# Create filtered dataset removing outliers and invalid values
+df_clean = df[
+    (df['outlier_any_flag'] == 0) &
+    (df['invalid_price_flag'] == 0) &
+    (df['invalid_area_flag'] == 0) &
+    (df['invalid_dom_flag'] == 0)
+].copy()
+
+print(f"\nFull dataset: {len(df):,} records")
+print(f"Clean dataset: {len(df_clean):,} records")
+print(f"Records removed: {len(df) - len(df_clean):,} ({ (len(df) - len(df_clean))/len(df)*100:.1f}%)")
+
+# ============================================================================
+# TASK 4: COMPARISON BEFORE AND AFTER FILTERING
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 4: Before vs After Filtering Comparison")
+print("="*60)
+
+# Comparison table for ClosePrice
+print("\n" + "-"*40)
+print("CLOSEPRICE COMPARISON")
+print("-"*40)
+
+if 'ClosePrice' in df.columns:
+    before_stats = df['ClosePrice'].describe()
+    after_stats = df_clean['ClosePrice'].describe()
+    
+    comparison = pd.DataFrame({
+        'Metric': ['Count', 'Mean', 'Median', 'Std Dev', 'Min', '25th', '75th', 'Max'],
+        'Before Filtering': [
+            f"{before_stats['count']:,.0f}",
+            f"${before_stats['mean']:,.0f}",
+            f"${before_stats['50%']:,.0f}",
+            f"${before_stats['std']:,.0f}",
+            f"${before_stats['min']:,.0f}",
+            f"${before_stats['25%']:,.0f}",
+            f"${before_stats['75%']:,.0f}",
+            f"${before_stats['max']:,.0f}"
+        ],
+        'After Filtering': [
+            f"{after_stats['count']:,.0f}",
+            f"${after_stats['mean']:,.0f}",
+            f"${after_stats['50%']:,.0f}",
+            f"${after_stats['std']:,.0f}",
+            f"${after_stats['min']:,.0f}",
+            f"${after_stats['25%']:,.0f}",
+            f"${after_stats['75%']:,.0f}",
+            f"${after_stats['max']:,.0f}"
+        ]
+    })
+    
+    print(comparison.to_string(index=False))
+    print(f"\nMedian Price Change: ${before_stats['50%']:,.0f} → ${after_stats['50%']:,.0f} ({(after_stats['50%'] - before_stats['50%'])/before_stats['50%']*100:.1f}% change)")
+
+# Comparison for LivingArea
+print("\n" + "-"*40)
+print("LIVINGAREA COMPARISON")
+print("-"*40)
+
+if 'LivingArea' in df.columns:
+    before_stats = df['LivingArea'].describe()
+    after_stats = df_clean['LivingArea'].describe()
+    
+    comparison = pd.DataFrame({
+        'Metric': ['Count', 'Mean', 'Median', 'Std Dev', 'Min', '25th', '75th', 'Max'],
+        'Before Filtering': [
+            f"{before_stats['count']:,.0f}",
+            f"{before_stats['mean']:,.0f}",
+            f"{before_stats['50%']:,.0f}",
+            f"{before_stats['std']:,.0f}",
+            f"{before_stats['min']:,.0f}",
+            f"{before_stats['25%']:,.0f}",
+            f"{before_stats['75%']:,.0f}",
+            f"{before_stats['max']:,.0f}"
+        ],
+        'After Filtering': [
+            f"{after_stats['count']:,.0f}",
+            f"{after_stats['mean']:,.0f}",
+            f"{after_stats['50%']:,.0f}",
+            f"{after_stats['std']:,.0f}",
+            f"{after_stats['min']:,.0f}",
+            f"{after_stats['25%']:,.0f}",
+            f"{after_stats['75%']:,.0f}",
+            f"{after_stats['max']:,.0f}"
+        ]
+    })
+    
+    print(comparison.to_string(index=False))
+    print(f"\nMedian LivingArea Change: {before_stats['50%']:,.0f} → {after_stats['50%']:,.0f} sq ft ({(after_stats['50%'] - before_stats['50%'])/before_stats['50%']*100:.1f}% change)")
+
+# Comparison for DaysOnMarket
+print("\n" + "-"*40)
+print("DAYSONMARKET COMPARISON")
+print("-"*40)
+
+if 'DaysOnMarket' in df.columns:
+    before_stats = df['DaysOnMarket'].describe()
+    after_stats = df_clean['DaysOnMarket'].describe()
+    
+    comparison = pd.DataFrame({
+        'Metric': ['Count', 'Mean', 'Median', 'Std Dev', 'Min', '25th', '75th', 'Max'],
+        'Before Filtering': [
+            f"{before_stats['count']:,.0f}",
+            f"{before_stats['mean']:.0f}",
+            f"{before_stats['50%']:.0f}",
+            f"{before_stats['std']:.0f}",
+            f"{before_stats['min']:.0f}",
+            f"{before_stats['25%']:.0f}",
+            f"{before_stats['75%']:.0f}",
+            f"{before_stats['max']:.0f}"
+        ],
+        'After Filtering': [
+            f"{after_stats['count']:,.0f}",
+            f"{after_stats['mean']:.0f}",
+            f"{after_stats['50%']:.0f}",
+            f"{after_stats['std']:.0f}",
+            f"{after_stats['min']:.0f}",
+            f"{after_stats['25%']:.0f}",
+            f"{after_stats['75%']:.0f}",
+            f"{after_stats['max']:.0f}"
+        ]
+    })
+    
+    print(comparison.to_string(index=False))
+    print(f"\nMedian DOM Change: {before_stats['50%']:.0f} → {after_stats['50%']:.0f} days ({(after_stats['50%'] - before_stats['50%'])/before_stats['50%']*100:.1f}% change)")
+
+# ============================================================================
+# TASK 5: PERCENTILE ANALYSIS TO GUIDE DECISIONS
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 5: Percentile Analysis for Decision Making")
+print("="*60)
+
+print("\nClosePrice Percentiles:")
+if 'ClosePrice' in df.columns:
+    for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
+        val = df['ClosePrice'].quantile(p/100)
+        print(f"  {p}th percentile: ${val:,.0f}")
+
+print("\nLivingArea Percentiles:")
+if 'LivingArea' in df.columns:
+    for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
+        val = df['LivingArea'].quantile(p/100)
+        print(f"  {p}th percentile: {val:,.0f} sq ft")
+
+print("\nDaysOnMarket Percentiles:")
+if 'DaysOnMarket' in df.columns:
+    for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
+        val = df['DaysOnMarket'].quantile(p/100)
+        print(f"  {p}th percentile: {val:.0f} days")
+
+# ============================================================================
+# TASK 6: VISUALIZATION (Optional)
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 6: Generating Visualization")
+print("="*60)
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Boxplot comparison - ClosePrice
+if 'ClosePrice' in df.columns:
+    axes[0, 0].boxplot([df['ClosePrice'].dropna(), df_clean['ClosePrice'].dropna()], 
+                       labels=['Before', 'After'])
+    axes[0, 0].set_title('ClosePrice Distribution - Before vs After Outlier Removal')
+    axes[0, 0].set_ylabel('Price ($)')
+    axes[0, 0].ticklabel_format(axis='y', style='plain')
+
+# Boxplot comparison - LivingArea
+if 'LivingArea' in df.columns:
+    axes[0, 1].boxplot([df['LivingArea'].dropna(), df_clean['LivingArea'].dropna()], 
+                       labels=['Before', 'After'])
+    axes[0, 1].set_title('LivingArea Distribution - Before vs After Outlier Removal')
+    axes[0, 1].set_ylabel('Square Feet')
+
+# Boxplot comparison - DaysOnMarket
+if 'DaysOnMarket' in df.columns:
+    axes[1, 0].boxplot([df['DaysOnMarket'].dropna(), df_clean['DaysOnMarket'].dropna()], 
+                       labels=['Before', 'After'])
+    axes[1, 0].set_title('DaysOnMarket Distribution - Before vs After Outlier Removal')
+    axes[1, 0].set_ylabel('Days')
+
+# Outlier composition pie chart
+outlier_counts = [
+    df['outlier_ClosePrice_flag'].sum(),
+    df['outlier_LivingArea_flag'].sum(),
+    df['outlier_DaysOnMarket_flag'].sum()
+]
+outlier_labels = ['ClosePrice', 'LivingArea', 'DaysOnMarket']
+axes[1, 1].pie(outlier_counts, labels=outlier_labels, autopct='%1.1f%%', startangle=90)
+axes[1, 1].set_title('Outlier Distribution by Field')
+
+plt.tight_layout()
+plt.savefig('outlier_analysis.png', dpi=100, bbox_inches='tight')
+print("✓ Visualization saved as 'outlier_analysis.png'")
+
+# ============================================================================
+# SAVE DATASETS
+# ============================================================================
+
+print("\n" + "="*60)
+print("SAVING DATASETS")
+print("="*60)
+
+# Save full flagged dataset (preserves all records with flags)
+df.to_csv('CRMLSSold202602_Flagged.csv', index=False)
+print("✓ Saved: CRMLSSold202602_Flagged.csv (all records with outlier flags)")
+
+# Save clean filtered dataset (removed outliers and invalid values)
+df_clean.to_csv('CRMLSSold202602_Clean_Filtered.csv', index=False)
+print("✓ Saved: CRMLSSold202602_Clean_Filtered.csv (outliers removed)")
+
+# ============================================================================
+# FINAL SUMMARY
+# ============================================================================
+
+print("\n" + "="*80)
+print("WEEK 7 DELIVERABLE SUMMARY")
+print("="*80)
+
+print(f"""
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          OUTLIER DETECTION SUMMARY                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ORIGINAL DATASET:                                                          │
+│    • Total records: {len(df):,}                                                       │
+│                                                                             │
+│  OUTLIER FLAGS CREATED:                                                     │
+│    • outlier_ClosePrice_flag: {df['outlier_ClosePrice_flag'].sum():,} records ({df['outlier_ClosePrice_flag'].sum()/len(df)*100:.1f}%)          │
+│    • outlier_LivingArea_flag: {df['outlier_LivingArea_flag'].sum():,} records ({df['outlier_LivingArea_flag'].sum()/len(df)*100:.1f}%)          │
+│    • outlier_DaysOnMarket_flag: {df['outlier_DaysOnMarket_flag'].sum():,} records ({df['outlier_DaysOnMarket_flag'].sum()/len(df)*100:.1f}%)    │
+│    • outlier_any_flag: {df['outlier_any_flag'].sum():,} records ({df['outlier_any_flag'].sum()/len(df)*100:.1f}%)                         │
+│                                                                             │
+│  BUSINESS RULE FLAGS:                                                       │
+│    • invalid_price_flag: {df['invalid_price_flag'].sum():,} records                     │
+│    • invalid_area_flag: {df['invalid_area_flag'].sum():,} records                       │
+│    • invalid_dom_flag: {df['invalid_dom_flag'].sum():,} records                         │
+│                                                                             │
+│  CLEAN FILTERED DATASET:                                                    │
+│    • Records kept: {len(df_clean):,} ({len(df_clean)/len(df)*100:.1f}%)                 │
+│    • Records removed: {len(df) - len(df_clean):,} ({ (len(df) - len(df_clean))/len(df)*100:.1f}%)            │
+│                                                                             │
+│  MEDIAN PRICE CHANGE:                                                       │
+│    • Before: ${df['ClosePrice'].median():,.0f}                                            │
+│    • After: ${df_clean['ClosePrice'].median():,.0f}                                             │
+│    • Change: {(df_clean['ClosePrice'].median() - df['ClosePrice'].median())/df['ClosePrice'].median()*100:.1f}%                             │
+│                                                                             │
+│  OUTPUT FILES CREATED:                                                      │
+│    • CRMLSSold202602_Flagged.csv (all records with flags)                   │
+│    • CRMLSSold202602_Clean_Filtered.csv (outliers removed)                  │
+│    • outlier_analysis.png (visualization)                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+""")
+
+print("\n" + "="*60)
+print("WEEK 7 COMPLETE")
+print("="*60)
+
+# ============================================================================
+# MEDIAN COMPARISON: BEFORE FILTER VS AFTER FILTER (OUTLIERS REMOVED)
+# ============================================================================
+
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings('ignore')
+
+print("="*80)
+print("MEDIAN COMPARISON: BEFORE FILTER VS AFTER FILTER")
+print("="*80)
+
+# ============================================================================
+# LOAD BOTH DATASETS
+# ============================================================================
+
+print("\n" + "="*60)
+print("LOADING DATASETS")
+print("="*60)
+
+# Load the flagged dataset (BEFORE filtering - includes outliers)
+try:
+    df_before = pd.read_csv('CRMLSSold202602_Flagged.csv')
+    print("✓ Loaded BEFORE filter dataset (with outliers)")
+    print(f"  Shape: {df_before.shape[0]:,} rows, {df_before.shape[1]} columns")
+except FileNotFoundError:
+    try:
+        df_before = pd.read_csv('CRMLSSold202602_With_Metrics.csv')
+        print("⚠️ Flagged dataset not found. Loaded dataset with metrics as BEFORE")
+        print(f"  Shape: {df_before.shape[0]:,} rows, {df_before.shape[1]} columns")
+    except FileNotFoundError:
+        print("❌ ERROR: Could not find BEFORE filter dataset")
+        exit()
+
+# Load the clean filtered dataset (AFTER filtering - outliers removed)
+try:
+    df_after = pd.read_csv('CRMLSSold202602_Clean_Filtered.csv')
+    print("\n✓ Loaded AFTER filter dataset (outliers removed)")
+    print(f"  Shape: {df_after.shape[0]:,} rows, {df_after.shape[1]} columns")
+except FileNotFoundError:
+    try:
+        df_after = pd.read_csv('CRMLSSold202602_Cleaned_Strict.csv')
+        print("⚠️ Clean_Filtered not found. Loaded Cleaned_Strict as AFTER")
+        print(f"  Shape: {df_after.shape[0]:,} rows, {df_after.shape[1]} columns")
+    except FileNotFoundError:
+        print("❌ ERROR: Could not find AFTER filter dataset")
+        exit()
+
+# ============================================================================
+# MEDIAN COMPARISON TABLE
+# ============================================================================
+
+print("\n" + "="*60)
+print("MEDIAN COMPARISON: BEFORE VS AFTER FILTERING")
+print("="*60)
+
+# List of fields to compare
+fields = ['ClosePrice', 'LivingArea', 'DaysOnMarket', 'price_per_sqft', 'price_ratio']
+
+# Create comparison DataFrame
+comparison_data = []
+
+for field in fields:
+    if field in df_before.columns and field in df_after.columns:
+        before_median = df_before[field].median()
+        after_median = df_after[field].median()
+        
+        # Calculate percent change
+        if before_median != 0:
+            pct_change = ((after_median - before_median) / before_median) * 100
+        else:
+            pct_change = 0
+        
+        # Format values based on field type
+        if field == 'ClosePrice':
+            before_str = f"${before_median:,.2f}"
+            after_str = f"${after_median:,.2f}"
+        elif field == 'LivingArea':
+            before_str = f"{before_median:,.0f} sq ft"
+            after_str = f"{after_median:,.0f} sq ft"
+        elif field == 'DaysOnMarket':
+            before_str = f"{before_median:.0f} days"
+            after_str = f"{after_median:.0f} days"
+        elif field == 'price_per_sqft':
+            before_str = f"${before_median:,.2f}"
+            after_str = f"${after_median:,.2f}"
+        elif field == 'price_ratio':
+            before_str = f"{before_median:.3f}"
+            after_str = f"{after_median:.3f}"
+        else:
+            before_str = f"{before_median:,.2f}"
+            after_str = f"{after_median:,.2f}"
+        
+        comparison_data.append({
+            'Field': field,
+            'Before Filter (With Outliers)': before_str,
+            'After Filter (Clean)': after_str,
+            'Absolute Change': after_median - before_median,
+            'Percent Change': f"{pct_change:+.1f}%"
+        })
+
+comparison_df = pd.DataFrame(comparison_data)
+print("\n" + comparison_df.to_string(index=False))
+
+# ============================================================================
+# DETAILED STATISTICS BEFORE VS AFTER
+# ============================================================================
+
+print("\n" + "="*60)
+print("DETAILED STATISTICS: CLOSEPRICE")
+print("="*60)
+
+if 'ClosePrice' in df_before.columns and 'ClosePrice' in df_after.columns:
+    print("\nBefore Filter (With Outliers):")
+    print(f"  Count: {df_before['ClosePrice'].count():,}")
+    print(f"  Mean: ${df_before['ClosePrice'].mean():,.2f}")
+    print(f"  Median: ${df_before['ClosePrice'].median():,.2f}")
+    print(f"  Std Dev: ${df_before['ClosePrice'].std():,.2f}")
+    print(f"  Min: ${df_before['ClosePrice'].min():,.2f}")
+    print(f"  Max: ${df_before['ClosePrice'].max():,.2f}")
+    
+    print("\nAfter Filter (Clean - Outliers Removed):")
+    print(f"  Count: {df_after['ClosePrice'].count():,}")
+    print(f"  Mean: ${df_after['ClosePrice'].mean():,.2f}")
+    print(f"  Median: ${df_after['ClosePrice'].median():,.2f}")
+    print(f"  Std Dev: ${df_after['ClosePrice'].std():,.2f}")
+    print(f"  Min: ${df_after['ClosePrice'].min():,.2f}")
+    print(f"  Max: ${df_after['ClosePrice'].max():,.2f}")
+
+print("\n" + "="*60)
+print("DETAILED STATISTICS: LIVINGAREA")
+print("="*60)
+
+if 'LivingArea' in df_before.columns and 'LivingArea' in df_after.columns:
+    print("\nBefore Filter (With Outliers):")
+    print(f"  Count: {df_before['LivingArea'].count():,}")
+    print(f"  Mean: {df_before['LivingArea'].mean():,.0f} sq ft")
+    print(f"  Median: {df_before['LivingArea'].median():,.0f} sq ft")
+    print(f"  Std Dev: {df_before['LivingArea'].std():,.0f} sq ft")
+    print(f"  Min: {df_before['LivingArea'].min():,.0f} sq ft")
+    print(f"  Max: {df_before['LivingArea'].max():,.0f} sq ft")
+    
+    print("\nAfter Filter (Clean - Outliers Removed):")
+    print(f"  Count: {df_after['LivingArea'].count():,}")
+    print(f"  Mean: {df_after['LivingArea'].mean():,.0f} sq ft")
+    print(f"  Median: {df_after['LivingArea'].median():,.0f} sq ft")
+    print(f"  Std Dev: {df_after['LivingArea'].std():,.0f} sq ft")
+    print(f"  Min: {df_after['LivingArea'].min():,.0f} sq ft")
+    print(f"  Max: {df_after['LivingArea'].max():,.0f} sq ft")
+
+print("\n" + "="*60)
+print("DETAILED STATISTICS: DAYSONMARKET")
+print("="*60)
+
+if 'DaysOnMarket' in df_before.columns and 'DaysOnMarket' in df_after.columns:
+    print("\nBefore Filter (With Outliers):")
+    print(f"  Count: {df_before['DaysOnMarket'].count():,}")
+    print(f"  Mean: {df_before['DaysOnMarket'].mean():.0f} days")
+    print(f"  Median: {df_before['DaysOnMarket'].median():.0f} days")
+    print(f"  Std Dev: {df_before['DaysOnMarket'].std():.0f} days")
+    print(f"  Min: {df_before['DaysOnMarket'].min():.0f} days")
+    print(f"  Max: {df_before['DaysOnMarket'].max():.0f} days")
+    
+    print("\nAfter Filter (Clean - Outliers Removed):")
+    print(f"  Count: {df_after['DaysOnMarket'].count():,}")
+    print(f"  Mean: {df_after['DaysOnMarket'].mean():.0f} days")
+    print(f"  Median: {df_after['DaysOnMarket'].median():.0f} days")
+    print(f"  Std Dev: {df_after['DaysOnMarket'].std():.0f} days")
+    print(f"  Min: {df_after['DaysOnMarket'].min():.0f} days")
+    print(f"  Max: {df_after['DaysOnMarket'].max():.0f} days")
+
+# ============================================================================
+# DISTRIBUTION CHANGES
+# ============================================================================
+
+print("\n" + "="*60)
+print("DISTRIBUTION CHANGES (Percentiles)")
+print("="*60)
+
+if 'ClosePrice' in df_before.columns and 'ClosePrice' in df_after.columns:
+    print("\nClosePrice Percentiles:")
+    print(f"{'Percentile':<12} {'Before':<15} {'After':<15} {'Change':<12}")
+    print("-" * 55)
+    
+    for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
+        before_val = df_before['ClosePrice'].quantile(p/100)
+        after_val = df_after['ClosePrice'].quantile(p/100)
+        change = after_val - before_val
+        print(f"{p}th %-ile:     ${before_val:>12,.0f}   ${after_val:>12,.0f}   {change:>+10,.0f}")
+
+# ============================================================================
+# BOXPLOT VISUALIZATION
+# ============================================================================
+
+print("\n" + "="*60)
+print("GENERATING VISUALIZATION")
+print("="*60)
+
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+# ClosePrice boxplot comparison
+if 'ClosePrice' in df_before.columns and 'ClosePrice' in df_after.columns:
+    axes[0].boxplot([df_before['ClosePrice'].dropna(), df_after['ClosePrice'].dropna()], 
+                    labels=['Before Filter', 'After Filter'])
+    axes[0].set_title('ClosePrice Distribution')
+    axes[0].set_ylabel('Price ($)')
+    axes[0].ticklabel_format(axis='y', style='plain')
+
+# LivingArea boxplot comparison
+if 'LivingArea' in df_before.columns and 'LivingArea' in df_after.columns:
+    axes[1].boxplot([df_before['LivingArea'].dropna(), df_after['LivingArea'].dropna()], 
+                    labels=['Before Filter', 'After Filter'])
+    axes[1].set_title('LivingArea Distribution')
+    axes[1].set_ylabel('Square Feet')
+
+# DaysOnMarket boxplot comparison
+if 'DaysOnMarket' in df_before.columns and 'DaysOnMarket' in df_after.columns:
+    axes[2].boxplot([df_before['DaysOnMarket'].dropna(), df_after['DaysOnMarket'].dropna()], 
+                    labels=['Before Filter', 'After Filter'])
+    axes[2].set_title('DaysOnMarket Distribution')
+    axes[2].set_ylabel('Days')
+
+plt.tight_layout()
+plt.savefig('before_after_filter_comparison.png', dpi=150, bbox_inches='tight')
+print("✓ Visualization saved as 'before_after_filter_comparison.png'")
+
+# ============================================================================
+# SUMMARY OF CHANGES
+# ============================================================================
+
+print("\n" + "="*80)
+print("SUMMARY OF MEDIAN CHANGES")
+print("="*80)
+
+print(f"""
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    BEFORE VS AFTER FILTERING SUMMARY                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  DATASET SIZES:                                                             │
+│    • Before Filter (with outliers): {df_before.shape[0]:,} records                        │
+│    • After Filter (clean): {df_after.shape[0]:,} records                                 │
+│    • Records removed: {df_before.shape[0] - df_after.shape[0]:,} ({(df_before.shape[0] - df_after.shape[0])/df_before.shape[0]*100:.1f}%)   │
+│                                                                             │
+│  MEDIAN CHANGES:                                                            │
+│    • ClosePrice: ${df_before['ClosePrice'].median():,.2f} → ${df_after['ClosePrice'].median():,.2f}       │
+│      Change: {((df_after['ClosePrice'].median() - df_before['ClosePrice'].median()) / df_before['ClosePrice'].median() * 100):+.1f}%          │
+│                                                                             │
+│    • LivingArea: {df_before['LivingArea'].median():,.0f} → {df_after['LivingArea'].median():,.0f} sq ft               │
+│      Change: {((df_after['LivingArea'].median() - df_before['LivingArea'].median()) / df_before['LivingArea'].median() * 100):+.1f}%          │
+│                                                                             │
+│    • DaysOnMarket: {df_before['DaysOnMarket'].median():.0f} → {df_after['DaysOnMarket'].median():.0f} days                 │
+│      Change: {((df_after['DaysOnMarket'].median() - df_before['DaysOnMarket'].median()) / df_before['DaysOnMarket'].median() * 100):+.1f}%          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+""")
+
+print("\n" + "="*60)
+print("MEDIAN COMPARISON COMPLETE")
+print("="*60)
