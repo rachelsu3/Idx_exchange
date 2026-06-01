@@ -1,0 +1,306 @@
+# ============================================================================
+# WEEK 6: FEATURE ENGINEERING AND MARKET METRICS
+# Author: [Your Name]
+# Description: Creates derived metrics and performs segment analysis
+# ============================================================================
+
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings('ignore')
+
+print("="*80)
+print("WEEK 6: FEATURE ENGINEERING AND MARKET METRICS")
+print("="*80)
+
+# ============================================================================
+# LOAD CLEANED DATA FROM WEEK 4-5
+# ============================================================================
+
+print("\n" + "="*60)
+print("LOADING CLEANED DATASET")
+print("="*60)
+
+# Try to load the cleaned dataset first
+try:
+    df = pd.read_csv('CRMLSSold202602_Cleaned.csv')
+    print("✓ Loaded cleaned dataset from Weeks 4-5")
+except FileNotFoundError:
+    try:
+        df = pd.read_csv('CRMLSSold202602_Enriched.csv')
+        print("⚠️ Cleaned dataset not found. Loaded enriched dataset.")
+    except FileNotFoundError:
+        print("❌ ERROR: Could not find CSV file. Please run Weeks 4-5 script first.")
+        exit()
+
+print(f"Dataset shape: {df.shape[0]:,} rows, {df.shape[1]} columns")
+
+# Convert date fields to datetime if not already
+date_fields = ['CloseDate', 'PurchaseContractDate', 'ListingContractDate']
+for field in date_fields:
+    if field in df.columns:
+        df[field] = pd.to_datetime(df[field], errors='coerce')
+
+# ============================================================================
+# TASK 1: ENGINEER MARKET METRICS
+# ============================================================================
+
+print("\n" + "="*60)
+print("TASK 1: Creating Engineered Market Metrics")
+print("="*60)
+
+# Metric 1: Price Ratio (ClosePrice / OriginalListPrice)
+if 'ClosePrice' in df.columns and 'OriginalListPrice' in df.columns:
+    df['price_ratio'] = df['ClosePrice'] / df['OriginalListPrice']
+    print("✓ Created price_ratio (ClosePrice / OriginalListPrice)")
+else:
+    print("⚠️ Cannot create price_ratio: Missing ClosePrice or OriginalListPrice")
+
+# Metric 2: Price Per Square Foot (ClosePrice / LivingArea)
+if 'ClosePrice' in df.columns and 'LivingArea' in df.columns:
+    df['price_per_sqft'] = df['ClosePrice'] / df['LivingArea']
+    # Cap at reasonable values (remove extreme outliers for analysis)
+    df['price_per_sqft'] = df['price_per_sqft'].clip(lower=0, upper=2000)
+    print("✓ Created price_per_sqft (ClosePrice / LivingArea)")
+else:
+    print("⚠️ Cannot create price_per_sqft: Missing ClosePrice or LivingArea")
+
+# Metric 3: Days on Market (already exists, just ensure numeric)
+if 'DaysOnMarket' in df.columns:
+    df['days_on_market'] = pd.to_numeric(df['DaysOnMarket'], errors='coerce')
+    print("✓ Confirmed days_on_market field")
+else:
+    print("⚠️ DaysOnMarket field not found")
+    df['days_on_market'] = np.nan
+
+# Metric 4: Year / Month / YrMo (derived from CloseDate)
+if 'CloseDate' in df.columns:
+    df['close_year'] = df['CloseDate'].dt.year
+    df['close_month'] = df['CloseDate'].dt.month
+    df['close_yr_mo'] = df['CloseDate'].dt.strftime('%Y-%m')
+    print("✓ Created close_year, close_month, and close_yr_mo from CloseDate")
+else:
+    print("⚠️ Cannot create date components: CloseDate not found")
+
+# Metric 5: Close to Original List Ratio (same as price_ratio, but using OriginalListPrice)
+if 'ClosePrice' in df.columns and 'OriginalListPrice' in df.columns:
+    df['close_to_original_ratio'] = df['ClosePrice'] / df['OriginalListPrice']
+    print("✓ Created close_to_original_ratio (captures full price reduction history)")
+else:
+    print("⚠️ Cannot create close_to_original_ratio")
+
+# Metric 6: Listing to Contract Days (PurchaseContractDate - ListingContractDate)
+if 'PurchaseContractDate' in df.columns and 'ListingContractDate' in df.columns:
+    df['listing_to_contract_days'] = (df['PurchaseContractDate'] - df['ListingContractDate']).dt.days
+    print("✓ Created listing_to_contract_days (time from listing to accepted offer)")
+else:
+    print("⚠️ Cannot create listing_to_contract_days: Missing date fields")
+
+# Metric 7: Contract to Close Days (CloseDate - PurchaseContractDate)
+if 'CloseDate' in df.columns and 'PurchaseContractDate' in df.columns:
+    df['contract_to_close_days'] = (df['CloseDate'] - df['PurchaseContractDate']).dt.days
+    print("✓ Created contract_to_close_days (escrow and closing period)")
+else:
+    print("⚠️ Cannot create contract_to_close_days: Missing date fields")
+
+# ============================================================================
+# VALIDATE NEW COLUMNS - SAMPLE OUTPUT
+# ============================================================================
+
+print("\n" + "="*60)
+print("SAMPLE OUTPUT - New Columns Populated Correctly")
+print("="*60)
+
+# List all newly created columns
+new_columns = ['price_ratio', 'price_per_sqft', 'days_on_market', 
+               'close_year', 'close_month', 'close_yr_mo', 
+               'close_to_original_ratio', 'listing_to_contract_days', 
+               'contract_to_close_days']
+
+existing_new_cols = [col for col in new_columns if col in df.columns]
+
+print("\nFirst 10 rows of new metrics:")
+print(df[existing_new_cols].head(10))
+
+# Summary statistics for new metrics
+print("\nSummary Statistics for New Metrics:")
+print(df[existing_new_cols].describe())
+
+# ============================================================================
+# TASK 2: SEGMENT ANALYSIS BY PROPERTY TYPE
+# ============================================================================
+
+print("\n" + "="*60)
+print("SEGMENT ANALYSIS: By PropertyType")
+print("="*60)
+
+if 'PropertyType' in df.columns:
+    # Group by PropertyType and calculate summary statistics
+    property_segments = df.groupby('PropertyType').agg({
+        'price_ratio': ['mean', 'median', 'std'],
+        'price_per_sqft': ['mean', 'median'],
+        'ClosePrice': ['mean', 'median'],
+        'days_on_market': ['mean', 'median'],
+        'listing_to_contract_days': ['mean', 'median'],
+        'contract_to_close_days': ['mean', 'median']
+    }).round(2)
+    
+    print(property_segments)
+else:
+    print("⚠️ PropertyType column not found")
+
+# ============================================================================
+# SEGMENT ANALYSIS: BY PROPERTY SUBTYPE
+# ============================================================================
+
+print("\n" + "="*60)
+print("SEGMENT ANALYSIS: By PropertySubType")
+print("="*60)
+
+if 'PropertySubType' in df.columns:
+    # Get top 10 property subtypes by count
+    top_subtypes = df['PropertySubType'].value_counts().head(10).index
+    
+    property_sub_segments = df[df['PropertySubType'].isin(top_subtypes)].groupby('PropertySubType').agg({
+        'price_ratio': ['mean', 'median'],
+        'price_per_sqft': ['mean', 'median'],
+        'ClosePrice': ['mean', 'median'],
+        'days_on_market': ['mean', 'median']
+    }).round(2)
+    
+    print(property_sub_segments)
+else:
+    print("⚠️ PropertySubType column not found")
+
+# ============================================================================
+# SEGMENT ANALYSIS: BY COUNTY
+# ============================================================================
+
+print("\n" + "="*60)
+print("SEGMENT ANALYSIS: By County (Top 10 by Volume)")
+print("="*60)
+
+if 'County' in df.columns:
+    # Get top 10 counties by number of sales
+    top_counties = df['County'].value_counts().head(10).index
+    
+    county_segments = df[df['County'].isin(top_counties)].groupby('County').agg({
+        'price_ratio': ['mean', 'median'],
+        'price_per_sqft': ['mean', 'median'],
+        'ClosePrice': ['mean', 'median'],
+        'days_on_market': ['mean', 'median']
+    }).round(2)
+    
+    print(county_segments)
+else:
+    print("⚠️ County column not found")
+    
+    # Try alternative column names
+    for col in ['CountyOrParish', 'CountyName', 'PropertyCounty']:
+        if col in df.columns:
+            print(f"\nUsing {col} instead...")
+            top_counties = df[col].value_counts().head(10).index
+            county_segments = df[df[col].isin(top_counties)].groupby(col).agg({
+                'price_ratio': ['mean', 'median'],
+                'price_per_sqft': ['mean', 'median'],
+                'ClosePrice': ['mean', 'median'],
+                'days_on_market': ['mean', 'median']
+            }).round(2)
+            print(county_segments)
+            break
+
+# ============================================================================
+# SEGMENT ANALYSIS: BY LIST OFFICE (Top 10 by Volume)
+# ============================================================================
+
+print("\n" + "="*60)
+print("SEGMENT ANALYSIS: By ListOfficeName (Top 10)")
+print("="*60)
+
+if 'ListOfficeName' in df.columns:
+    # Get top 10 listing offices by number of sales
+    top_offices = df['ListOfficeName'].value_counts().head(10).index
+    
+    office_segments = df[df['ListOfficeName'].isin(top_offices)].groupby('ListOfficeName').agg({
+        'price_ratio': ['mean', 'median'],
+        'price_per_sqft': ['mean', 'median'],
+        'ClosePrice': ['mean', 'median'],
+        'days_on_market': ['mean', 'median']
+    }).round(2)
+    
+    print(office_segments)
+else:
+    print("⚠️ ListOfficeName column not found")
+
+# ============================================================================
+# ADDITIONAL SEGMENT: PRICE RATIO DISTRIBUTION BY MONTH
+# ============================================================================
+
+print("\n" + "="*60)
+print("TIME TREND: Price Ratio by Month")
+print("="*60)
+
+if 'close_yr_mo' in df.columns and 'price_ratio' in df.columns:
+    monthly_price_ratio = df.groupby('close_yr_mo').agg({
+        'price_ratio': ['mean', 'median', 'count']
+    }).round(3)
+    
+    print(monthly_price_ratio)
+else:
+    print("⚠️ Cannot create monthly price ratio trend")
+
+# ============================================================================
+# SUMMARY OF ENGINEERED METRICS
+# ============================================================================
+
+print("\n" + "="*60)
+print("SUMMARY OF ENGINEERED METRICS")
+print("="*60)
+
+print("\nMetrics Created:")
+metrics = [
+    ("price_ratio", "Negotiation strength (Close/OriginalList)"),
+    ("price_per_sqft", "Normalized price across sizes"),
+    ("days_on_market", "Time-to-sell indicator"),
+    ("close_year", "Year of sale"),
+    ("close_month", "Month of sale"),
+    ("close_yr_mo", "Year-Month for time series"),
+    ("close_to_original_ratio", "Full price reduction history"),
+    ("listing_to_contract_days", "Time from listing to accepted offer"),
+    ("contract_to_close_days", "Escrow and closing period")
+]
+
+for metric, purpose in metrics:
+    if metric in df.columns:
+        non_null = df[metric].notna().sum()
+        print(f"✓ {metric}: {purpose} ({non_null:,} non-null records)")
+    else:
+        print(f"✗ {metric}: Not created - missing source data")
+
+# ============================================================================
+# SAVE ENRICHED DATASET WITH NEW METRICS
+# ============================================================================
+
+print("\n" + "="*60)
+print("SAVING ENRICHED DATASET")
+print("="*60)
+
+# Save the dataset with new metrics
+df.to_csv('CRMLSSold202602_With_Metrics.csv', index=False)
+print("✓ Saved: CRMLSSold202602_With_Metrics.csv")
+
+print("\n" + "="*60)
+print("WEEK 6 COMPLETE")
+print("="*60)
+
+# ============================================================================
+# VERIFICATION: Check for null rates in new metrics
+# ============================================================================
+
+print("\n" + "="*60)
+print("DATA QUALITY CHECK - New Metrics")
+print("="*60)
+
+for metric in existing_new_cols:
+    null_pct = (df[metric].isnull().sum() / len(df)) * 100
+    print(f"{metric}: {null_pct:.1f}% null")
